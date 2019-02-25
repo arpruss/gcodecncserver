@@ -9,7 +9,6 @@ socketio = SocketIO(app)
 
 # positions in mm
 
-
 home = (28.641,220.647)
 
 Tool = namedtuple('Tool', ['x','y','wiggleAxis','wiggleDistance','wiggleIterations'])
@@ -18,6 +17,7 @@ Rect = namedtuple('Rect', ['x0','y0','width','height'])
 def RTool(x0,y0,w,h):
     return Tool(x0+w/2,y0+h/2,w,h)
     
+stepsPerMM = 17.78    
 colorVerticalSpacing = 25.564
 color0Y = 176.911
 colorX = 15.094
@@ -47,8 +47,14 @@ distanceCounter = 0
 bufferCount = 0
 paused = False
 
+def getPositionXSteps():
+    return math.round((penX - home) * stepsPerMM)
+
+def getPositionYSteps():
+    return math.round((home - penY) * stepsPerMM)
+
 def getPenData():
-    return { 'x': penX, 'y': penY, 'state':1, 'height': servoHeight, 
+    return { 'x': getPositionXSteps(), 'y': getPositionYSteps(), 'state':1, 'height': servoHeight, 
              'power': 0, 'tool': currentTool, 'lastDuration': lastDuration,
              distanceCounter: distanceCounter, 'simulation': 0 }
 
@@ -73,6 +79,9 @@ def handle_message(message):
 
 def addCallback(cb):
     print('TODO callback: ' + cb)
+
+def moveXY(xy):
+    print('TODO move: ' + xy)
     
 def setTool(tool):
     global currentTool
@@ -97,10 +106,50 @@ def handle_tools_PUT(tool):
         setTool(tool)
         return jsonify({'status': 'Tool changed to '+tool})
 
-@app.route('/v1/pen', methods=['GET','PUT'])
+@app.route('/v1/pen', methods=['GET','PUT','DELETE'])
 def handle_pen():
     if request.method == 'GET':
         return jsonify(getPenData())
+    elif request.method == 'DELETE':
+        moveXY(home)
+        return jsonify(getPenData())
+    elif request.method == 'PUT':
+        try:
+            x = request.json['x']
+            y = request.json['y']
+            moveXY( ( canvas.x0 + canvas.width * x, canvas.y0 + canvas.height * (1.-y) )
+            return jsonify(getPenData())
+        except KeyError:
+            try:
+                if request.json['resetCounter']:
+                    distanceCounter = 0
+                return jsonify(getPenData())
+            except KeyError:
+                state = request.json['state']
+                if state == 'wash':
+                    state = 1.2
+                elif state == 'wipe':
+                    state = 0.9
+                elif state == 'paint':
+                    state = 1.0 
+                elif state == 'up':
+                    state = 0.0
+                else:
+                    try:
+                        state = float(state)
+                        if state < 0:
+                            state = 0.
+                        elif state > 1:
+                            state = 1.
+                    except:
+                        return jsonify(getPenData())
+                moveZ( state * downZ + (1-state) * upZ )
+                return jsonify(getPenData())
+                            
+                moveZ( 
+            
+                
+            
     else:
         print('pen request:', request.json)
         return jsonify(getPenData())
