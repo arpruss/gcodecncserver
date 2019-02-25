@@ -1,12 +1,43 @@
 #!flask/bin/python
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO, emit
+from collections import namedtuple
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'whocares'
+app.config['SECRET_KEY'] = 'Idontcareaboutsecurityinthisapp'
 socketio = SocketIO(app)
 
-penHeight = 0.75 # 0=up, 1=down
+# positions in mm
+
+
+home = (28.641,220.647)
+
+Tool = namedtuple('Tool', ['x','y','width','height','wiggleAxis','wiggleDistance','wiggleIterations'])
+Rect = namedtuple('Rect', ['x0','y0','width','height'])
+
+def RTool(x0,y0,w,h):
+    return Tool(x0+w/2,y0+h/2,w,h)
+    
+colorVerticalSpacing = 25.564
+color0Y = 176.911
+colorX = 15.094
+
+tools = { "water0": Tool(8.659+55.269/2,169.548+55.269/2,'y', 0.3, 2),
+          "water1": Tool(8.659+55.269/2,97.606+55.269/2,'y', 0.3, 2),
+          "water2": Tool(8.659+55.269/2,25.663+55.269/2,'y', 0.3, 2),
+          "color0": Tool(colorX, color0Y-colorVerticalSpacing*0, 'xy', 17, 4),
+          "color1": Tool(colorX, color0Y-colorVerticalSpacing*1, 'xy', 17, 4),
+          "color2": Tool(colorX, color0Y-colorVerticalSpacing*2, 'xy', 17, 4),
+          "color3": Tool(colorX, color0Y-colorVerticalSpacing*3, 'xy', 17, 4),
+          "color4": Tool(colorX, color0Y-colorVerticalSpacing*4, 'xy', 17, 4),
+          "color5": Tool(colorX, color0Y-colorVerticalSpacing*5, 'xy', 17, 4),
+          "color6": Tool(colorX, color0Y-colorVerticalSpacing*6, 'xy', 17, 4),
+          "color7": Tool(colorX, color0Y-colorVerticalSpacing*7, 'xy', 17, 4)
+          }
+          
+canvas = Rect(104.81, 6.116, 286.250, 214.812)
+
+penHeight = 1 # 0=up, 1=down
 penX = 0
 penY = 0
 servoHeight = 0
