@@ -12,7 +12,7 @@ socketio = SocketIO(app)
 
 home = (28.641,220.647)
 
-Tool = namedtuple('Tool', ['x','y','width','height','wiggleAxis','wiggleDistance','wiggleIterations'])
+Tool = namedtuple('Tool', ['x','y','wiggleAxis','wiggleDistance','wiggleIterations'])
 Rect = namedtuple('Rect', ['x0','y0','width','height'])
 
 def RTool(x0,y0,w,h):
