@@ -41,7 +41,7 @@ penHeight = 1 # 0=up, 1=down
 penX = 0
 penY = 0
 servoHeight = 0
-tool = "red"
+currentTool = "red"
 lastDuration = 0
 distanceCounter = 0
 bufferCount = 0
@@ -49,7 +49,7 @@ paused = False
 
 def getPenData():
     return { 'x': penX, 'y': penY, 'state':1, 'height': servoHeight, 
-             'power': 0, 'tool': tool, 'lastDuration': lastDuration,
+             'power': 0, 'tool': currentTool, 'lastDuration': lastDuration,
              distanceCounter: distanceCounter, 'simulation': 0 }
 
 @socketio.on('connect')
@@ -74,6 +74,11 @@ def handle_message(message):
 def addCallback(cb):
     print('TODO callback: ' + cb)
     
+def setTool(tool):
+    global currentTool
+    print('TODO tool: ' + tool)
+    currentTool = tool
+    
 def clearBuffer():
     print("TODO: clearBuffer")
     return jsonify( { 'status': 'buffer cleared' } )
@@ -82,13 +87,18 @@ def clearBuffer():
 def index():
     return "Hello, World!"
     
-@app.route('/v1/tools', methods=['GET','PUT'])
-def handle_tools(task_id=None):
-    if request.method == 'GET':
-        return jsonify('tools': list(keys(tools)))
+@app.route('/v1/tools', methods=['GET'])
+def handle_tools_GET():
+    return jsonify({'tools': list(sort(tools.keys()))})
+
+@app.route('/v1/tools/<tool>', methods=['PUT'])
+def handle_tools_PUT(tool):
+    if tool in tools:
+        setTool(tool)
+        return jsonify({'status': 'Tool changed to '+tool})
 
 @app.route('/v1/pen', methods=['GET','PUT'])
-def handle_pen(task_id=None):
+def handle_pen():
     if request.method == 'GET':
         return jsonify(getPenData())
     else:
@@ -97,7 +107,7 @@ def handle_pen(task_id=None):
     
 
 @app.route('/v1/buffer', methods=['GET','POST','PUT','DELETE'])
-def handle_buffer(task_id=None):
+def handle_buffer():
     def getData():
         return jsonify({'running': False, 'paused': paused, 'count': bufferCount, 'buffer': ['hello']})
     if request.method == 'DELETE':
@@ -118,7 +128,7 @@ def handle_buffer(task_id=None):
         return jsonify({'status': "Message added to buffer"})
 
 #@app.route('/socket.io/', methods=['GET'])
-#def handle_socket_io(task_id=None):
+#def handle_socket_io():
 #    print('socket')
 #    return handle_pen()
         
