@@ -81,6 +81,11 @@ def clearBuffer():
 @app.route('/')
 def index():
     return "Hello, World!"
+    
+@app.route('/v1/tools', methods=['GET','PUT'])
+def handle_tools(task_id=None):
+    if request.method == 'GET':
+        return jsonify('tools': list(keys(tools)))
 
 @app.route('/v1/pen', methods=['GET','PUT'])
 def handle_pen(task_id=None):
