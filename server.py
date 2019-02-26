@@ -2,6 +2,8 @@ from __future__ import print_function
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO, emit
 from collections import namedtuple
+from sendgcode import GCodeSender
+import sys
 import time
 import threading
 import math
@@ -9,7 +11,6 @@ import math
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'Idontcareaboutsecurityinthisapp'
 socketio = SocketIO(app)
-sid = None
 sids = set()
 
 bufferData = threading.Event()
@@ -203,7 +204,10 @@ def addBuffer(type,data):
     print("adding", (type,data))
     buffer.append((type,data))
     bufferData.set()
-        
+
+outXY = home
+outZ = upZ
+
 def sendBufferLine():
     if not buffer:
         return
@@ -226,8 +230,7 @@ def bufferUpdate():
                             'bufferPaused': paused,
                             'bufferPausePen': getPenData() })
 
-def serialCommunicator():
-    print("sc")
+def serialCommunicator(sender):
     with app.test_request_context("/"):
         while True:
             bufferData.wait()
@@ -238,7 +241,15 @@ def serialCommunicator():
             bufferData.clear()
 
 if __name__ == '__main__':
-    communicator = threading.Thread(target=serialCommunicator,args=())
+    if len(sys.argv) >= 2:
+        port = sys.argv[1]
+    else:
+        port = "auto"
+    if len(sys.argv) >= 3:
+        speed = int(sys.argv[2])
+    else:
+        speed = 115200
+    communicator = threading.Thread(target=serialCommunicator,args=(GCodeSender(port,speed),))
     communicator.daemon = True
     communicator.start()
     app.run(debug=True,use_reloader=False,port=42420)
