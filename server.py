@@ -216,7 +216,6 @@ def sendBufferLine():
     
 def bufferUpdate():
     if sid is not None:
-        print('bu',buffer)
         emit('buffer update', { 'bufferList': [str(hash(a)) for a in buffer],
                                 'bufferData': {}, 
                                 'bufferRunning': alive,
