@@ -1,15 +1,29 @@
 #!flask/bin/python
+from __future__ import print_function
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO, emit
 from collections import namedtuple
+import time
+import threading
+import math
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'Idontcareaboutsecurityinthisapp'
 socketio = SocketIO(app)
+sid = None
+
+bufferData = threading.Event()
+alive = True
+buffer = []
+BUFFER_GCODE = 'g'
+BUFFER_CALLBACK = 'c'
+BUFFER_MESSAGE = 'm'
+BUFFER_MOVE_XY = 'xy'
+BUFFER_MOVE_Z = 'z'
 
 # positions in mm
 
-home = (28.641,220.647)
+home = (28.641,220.647,10)
 
 Tool = namedtuple('Tool', ['x','y','wiggleAxis','wiggleDistance','wiggleIterations'])
 Rect = namedtuple('Rect', ['x0','y0','width','height'])
@@ -17,6 +31,8 @@ Rect = namedtuple('Rect', ['x0','y0','width','height'])
 def RTool(x0,y0,w,h):
     return Tool(x0+w/2,y0+h/2,w,h)
     
+downZ = 0
+upZ = 10
 stepsPerMM = 17.78    
 colorVerticalSpacing = 25.564
 color0Y = 176.911
@@ -44,14 +60,17 @@ servoHeight = 0
 currentTool = "red"
 lastDuration = 0
 distanceCounter = 0
-bufferCount = 0
 paused = False
+    
+def getTimestamp():
+    # TODO: worry about locale
+    return time.strftime("%a %b %d %Y %X %Z")
 
 def getPositionXSteps():
-    return math.round((penX - home) * stepsPerMM)
+    return int(0.5+(penX - home[0]) * stepsPerMM)
 
 def getPositionYSteps():
-    return math.round((home - penY) * stepsPerMM)
+    return int(0.5+(home[1] - penY) * stepsPerMM)
 
 def getPenData():
     return { 'x': getPositionXSteps(), 'y': getPositionYSteps(), 'state':1, 'height': servoHeight, 
@@ -60,9 +79,11 @@ def getPenData():
 
 @socketio.on('connect')
 def chat_connect():
-    print ('socket.io connected')
-    
+    global sid
+    print ('socket.io connected',request.sid,request.namespace)
+    sid = request.sid
     emit('pen update', getPenData())
+    bufferUpdate()
 
 @socketio.on('disconnect')
 def chat_disconnect():
@@ -77,11 +98,11 @@ def chat_broadcast(message):
 def handle_message(message):
     print('received message: ' + message)
 
-def addCallback(cb):
-    print('TODO callback: ' + cb)
-
 def moveXY(xy):
-    print('TODO move: ' + xy)
+    addBuffer(BUFFER_MOVE_XY, xy)
+    
+def moveZ(z):
+    addBuffer(BUFFER_MOVE_Z, z)
     
 def setTool(tool):
     global currentTool
@@ -89,7 +110,8 @@ def setTool(tool):
     currentTool = tool
     
 def clearBuffer():
-    print("TODO: clearBuffer")
+    buffer = []
+    bufferUpdate()
     return jsonify( { 'status': 'buffer cleared' } )
 
 @app.route('/')
@@ -117,7 +139,7 @@ def handle_pen():
         try:
             x = request.json['x']
             y = request.json['y']
-            moveXY( ( canvas.x0 + canvas.width * x, canvas.y0 + canvas.height * (1.-y) )
+            moveXY( ( canvas.x0 + canvas.width * x, canvas.y0 + canvas.height * (1.-y) ) )
             return jsonify(getPenData())
         except KeyError:
             try:
@@ -145,11 +167,6 @@ def handle_pen():
                         return jsonify(getPenData())
                 moveZ( state * downZ + (1-state) * upZ )
                 return jsonify(getPenData())
-                            
-                moveZ( 
-            
-                
-            
     else:
         print('pen request:', request.json)
         return jsonify(getPenData())
@@ -158,7 +175,7 @@ def handle_pen():
 @app.route('/v1/buffer', methods=['GET','POST','PUT','DELETE'])
 def handle_buffer():
     def getData():
-        return jsonify({'running': False, 'paused': paused, 'count': bufferCount, 'buffer': ['hello']})
+        return jsonify({'running': False, 'paused': paused, 'count': len(buffer), 'buffer': buffer})
     if request.method == 'DELETE':
         return clearBuffer()
     elif request.method == 'GET':
@@ -166,24 +183,56 @@ def handle_buffer():
     elif request.method == 'PUT':
         paused = request.json.get('paused', False)
         print('paused',paused)
+        bufferData.set()
+        bufferUpdate()
         return getData()
     elif request.method == 'POST':
         msg = request.json.get('message',None)
         if msg:
-            print(msg)
+            addBuffer(BUFFER_MESSAGE,msg)
         cb = request.json.get('callback',None)
         if cb:
-            addCallback(cb)
+            addBuffer(BUFFER_CALLBACK,cb)
         return jsonify({'status': "Message added to buffer"})
 
-#@app.route('/socket.io/', methods=['GET'])
-#def handle_socket_io():
-#    print('socket')
-#    return handle_pen()
+def addBuffer(type,data):
+    print("adding", (type,data))
+    buffer.append((type,data))
+    bufferData.set()
         
-def get_tasks():
-    pass
+def sendBufferLine():
+    if not buffer:
+        return
+    data = buffer.pop(0)
+    if data[0] == BUFFER_CALLBACK:
+        print("Callback update:", data[1])
+        emit('callback update', {'name': data[1], 'timestamp': getTimestamp() }, room=sid, namespace='/')
+    elif data[0] == BUFFER_MESSAGE:
+        print("Message:", data[1])
+        emit('message update', {'message': data[1], 'timestamp': getTimestamp() }, room=sid, namespace='/')
+    else:
+        print("Unknown buffer item", data)
+    bufferUpdate()
+    
+def bufferUpdate():
+    if sid is not None:
+        print('bu',buffer)
+        emit('buffer update', { 'bufferList': [str(hash(a)) for a in buffer],
+                                'bufferData': {}, 
+                                'bufferRunning': alive,
+                                'bufferPaused': paused,
+                                'bufferPausePen': getPenData() }, room=sid, namespace='/')
+
+def serialCommunicator():
+    while True:
+        bufferData.wait()
+        if not alive:
+            break
+        while not paused and buffer:
+            sendBufferLine()
+        bufferData.clear()
 
 if __name__ == '__main__':
-    app.run(debug=True,port=42420)
-    
+    communicator = threading.Thread(target=serialCommunicator,args=())
+    communicator.daemon = True
+    app.run(debug=True,use_reloader=False,port=42420)
