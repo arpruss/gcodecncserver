@@ -1,4 +1,3 @@
-#!flask/bin/python
 from __future__ import print_function
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO, emit
@@ -11,6 +10,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'Idontcareaboutsecurityinthisapp'
 socketio = SocketIO(app)
 sid = None
+sids = set()
 
 bufferData = threading.Event()
 alive = True
@@ -79,15 +79,19 @@ def getPenData():
 
 @socketio.on('connect')
 def chat_connect():
-    global sid
     print ('socket.io connected',request.sid,request.namespace)
-    sid = request.sid
-    emit('pen update', getPenData())
+    sids.add(request.sid)
+    myEmit('pen update', getPenData())
     bufferUpdate()
 
 @socketio.on('disconnect')
 def chat_disconnect():
+    sids.remove(request.sid)
     print ("Client disconnected")
+    
+def myEmit(m, d):
+    for sid in sids:
+        emit(m, d, room=sid, namespace='/')
 
 @socketio.on('broadcast')
 def chat_broadcast(message):
@@ -204,34 +208,37 @@ def sendBufferLine():
     if not buffer:
         return
     data = buffer.pop(0)
+    print("processing",data)
     if data[0] == BUFFER_CALLBACK:
         print("Callback update:", data[1])
-        emit('callback update', {'name': data[1], 'timestamp': getTimestamp() }, room=sid, namespace='/')
+        myEmit('callback update', {'name': data[1], 'timestamp': getTimestamp() })
     elif data[0] == BUFFER_MESSAGE:
         print("Message:", data[1])
-        emit('message update', {'message': data[1], 'timestamp': getTimestamp() }, room=sid, namespace='/')
+        myEmit('message update', {'message': data[1], 'timestamp': getTimestamp() })
     else:
         print("Unknown buffer item", data)
     bufferUpdate()
     
 def bufferUpdate():
-    if sid is not None:
-        emit('buffer update', { 'bufferList': [str(hash(a)) for a in buffer],
-                                'bufferData': {}, 
-                                'bufferRunning': alive,
-                                'bufferPaused': paused,
-                                'bufferPausePen': getPenData() }, room=sid, namespace='/')
+    myEmit('buffer update', { 'bufferList': [str(hash(a)) for a in buffer],
+                            'bufferData': {}, 
+                            'bufferRunning': alive,
+                            'bufferPaused': paused,
+                            'bufferPausePen': getPenData() })
 
 def serialCommunicator():
-    while True:
-        bufferData.wait()
-        if not alive:
-            break
-        while not paused and buffer:
-            sendBufferLine()
-        bufferData.clear()
+    print("sc")
+    with app.test_request_context("/"):
+        while True:
+            bufferData.wait()
+            if not alive:
+                break
+            while not paused and buffer:
+                sendBufferLine()
+            bufferData.clear()
 
 if __name__ == '__main__':
     communicator = threading.Thread(target=serialCommunicator,args=())
     communicator.daemon = True
+    communicator.start()
     app.run(debug=True,use_reloader=False,port=42420)
