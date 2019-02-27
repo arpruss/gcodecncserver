@@ -35,7 +35,7 @@ def RTool(x0,y0,w,h):
     
     
 downZ = 0
-upZ = 10
+upZ = 15
 stepsPerMM = 17.78    
 colorVerticalSpacing = 25.564
 color0Y = 176.911
