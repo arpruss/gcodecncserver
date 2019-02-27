@@ -14,6 +14,7 @@ class FakeSerial(object):
         elif name == 'stderr':
             self.handle = sys.stderr
         else:
+            print("open",name)
             self.handle = open(name, "w")
         
     def flushInput(self):
@@ -21,6 +22,7 @@ class FakeSerial(object):
         
     def write(self, data):
         self.handle.write(data)
+        self.handle.flush()
         
     def close(self):
         if self.handle is not sys.stdout:
@@ -96,6 +98,9 @@ class GCodeSender(object):
     def sendCommands(self, cc):
         for c in cc:
             self.sendCommand(c)
+            
+    def close(self):
+        self.serial.close()
     
 if __name__ == '__main__':
     import sys
