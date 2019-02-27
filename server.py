@@ -23,7 +23,6 @@ BUFFER_MOVE_XY = 'xy'
 BUFFER_MOVE_Z = 'z'
 
 # positions in mm
-
 home = (28.641,220.647,10)
 
 Tool = namedtuple('Tool', ['x','y','wiggleAxis','wiggleDistance','wiggleIterations'])
@@ -38,6 +37,9 @@ stepsPerMM = 17.78
 colorVerticalSpacing = 25.564
 color0Y = 176.911
 colorX = 15.094
+penUpSpeed=40
+penDownSpeed=35
+zSpeed=15
 
 tools = { "water0": Tool(8.659+55.269/2,169.548+55.269/2,'y', 0.3, 2),
           "water1": Tool(8.659+55.269/2,97.606+55.269/2,'y', 0.3, 2),
@@ -153,6 +155,7 @@ def handle_pen():
                 return jsonify(getPenData())
             except KeyError:
                 state = request.json['state']
+                print("z",state)
                 if state == 'wash':
                     state = 1.2
                 elif state == 'wipe':
@@ -208,19 +211,37 @@ def addBuffer(type,data):
 outXY = home
 outZ = upZ
 
-def sendBufferLine():
+def sendBufferLine(sender):
+    global outXY, outZ
     if not buffer:
         return
     data = buffer.pop(0)
     print("processing",data)
+    cmds = []
     if data[0] == BUFFER_CALLBACK:
         print("Callback update:", data[1])
         myEmit('callback update', {'name': data[1], 'timestamp': getTimestamp() })
     elif data[0] == BUFFER_MESSAGE:
         print("Message:", data[1])
         myEmit('message update', {'message': data[1], 'timestamp': getTimestamp() })
+    elif data[0] == BUFFER_MOVE_XY:
+        fast = outZ >= upZ - 0.01        
+        if fast:
+            speed = 60 * penUpSpeed
+            cmd = 'G00'
+        else:
+            speed = 60 * penDownSpeed
+            cmd = 'G01'
+        cmds.append( "%s F%.1f X%.3f Y%.3f" % (cmd, speed, data[1][0], data[1][1]) )
+        outXY = data[1]
+    elif data[0] == BUFFER_MOVE_Z:
+        speed = 60 * zSpeed
+        cmds.append( "G00 F%.1f Z%.3f" % (speed, data[1]) )
+        outZ = data[1]
     else:
         print("Unknown buffer item", data)
+    if cmds:
+        sender.sendCommands(cmds)
     bufferUpdate()
     
 def bufferUpdate():
@@ -237,7 +258,7 @@ def serialCommunicator(sender):
             if not alive:
                 break
             while not paused and buffer:
-                sendBufferLine()
+                sendBufferLine(sender)
             bufferData.clear()
 
 if __name__ == '__main__':
